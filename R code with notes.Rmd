@@ -116,7 +116,6 @@ The phyloseq object here contains three components:
 ASV_tablePrimeRemove<- otu_table(seqtab.nochimRemovePrime, taxa_are_rows = FALSE)
 taxa_tablePrimeRemove<- tax_table(taxaSilvaRemovePrime)
 meta_file_store<- read.csv("RR1_metadata.csv", header = T, row.names=1)
-meta_store<- meta(meta_file_store)
 sample.data.PrimeRemove.store<- sample_data(meta_file_store)
 
 phyloseqStorePrimeRemove<- phyloseq(ASV_tablePrimeRemove, sample.data.PrimeRemove.store, taxa_tablePrimeRemove)
@@ -134,7 +133,6 @@ phyloseq.rarefiedStorePrimeRemove<- rarefy_even_depth(phyloseqStorePrimeRemove, 
 This function will you give you alpha diversity using the following measures: Observed, Chao1, ACE, Shannon, Simpson, InvSimpson, and Fisher. You can specify one or measures if wanted.
 ```{r}
 rarefied_alpha_diveristy_store_remove<- estimate_richness(phyloseq.rarefiedStorePrimeRemove)
-write.csv(rarefied_alpha_diveristy_store_remove, "rarefied_alpha_diversity_store.csv")
 ```
 #Plotting alpha diveristy
 This will plot the alpha diversity measures in the form of boxplots.In this case Shannon was used as the measurement of alpha diversity since this was a common measure of alpha diversity in papers about leafy green microbial communities.
@@ -149,9 +147,12 @@ alphaplot
 ```
 
 #Running an ANOVA on the alpha diversities 
-Sample type and inoculation status were added as columns to the alpha diversity csv file and read back into R before performing the ANOVA.
+Sample type and inoculation status were added as columns before performing the ANOVA.
 ```{r setup, eval=FALSE}
-AlphaDiv<- read.csv("rarefied_alpha_diversity_store.csv", row.names = 1)
+rarefied_alpha_diveristy_store_remove$Type<- meta_file_store$Type
+rarefied_alpha_diveristy_store_remove$Inoculation<- meta_file_store$Inoculation
+
+AlphaDiv<- rarefied_alpha_diveristy_store_remove
 ```
 
 ```{r}
@@ -191,7 +192,7 @@ pairwise.perm.manova(distance_matrix_rare_remove, phyloseq::sample_data(phyloseq
 
 ##Investigating the taxa present 
 #Add genus name to the species name in the phyloseq object
-This was done for visualization purposes. Originally, when you look at the taxonomic rank of species you will just see the species name and not the corresponding genus name. This code chunk makes it so the species ranking will not appear as the genus and species name. For example, instead of just "coli", the species name will now appear as "Escherichia coli". 
+This was done for visualization purposes. Originally, when you look at the taxonomic rank of species you will just see the species name and not the corresponding genus name. This code chunk makes it so the species ranking will now appear as the genus and species name. For example, instead of just "coli", the species name will now appear as "Escherichia coli". 
 ```{r setup, eval=FALSE}
 no.na = !is.na(tax_table(phyloseq.rarefiedStorePrimeRemove)[,"Genus"]) & !is.na(tax_table(phyloseq.rarefiedStorePrimeRemove)[,"Species"])
 tax_table(phyloseq.rarefiedStorePrimeRemove)[no.na][,"Species"] = paste(tax_table(phyloseq.rarefiedStorePrimeRemove)[no.na][,"Genus"], tax_table(phyloseq.rarefiedStorePrimeRemove)[no.na][,"Species"])
@@ -263,7 +264,7 @@ top5genusStore<- merge_phyloseq(top5genusRarefiedSwabs, top5genusRarefiedTissue,
 ```
 
 #Plotting the most abundant taxa
-Each taxonomic rank was plotted separately. Colors were specified to be able to follow taxa that belonged to different phyla and classes throughout the plots with lower taxonomy rankings. For example, all taxa in the Gammaproteobacteria class are shades of blue throughout the various plots. The plots were then stacked on to form one cohesive figure.
+Each taxonomic rank was plotted separately. Colors were specified to be able to follow taxa that belonged to different phyla and classes throughout the plots at lower taxonomy rankings. For example, all taxa in the Gammaproteobacteria class are shades of blue throughout the various plots. The plots were then stacked on top of eachother to form one cohesive figure.
 ```{r}
 plot0store<- plot_bar(top5phylumStore, x="Sample.Name", fill="Phylum", title="Most Abundant Phylas") + facet_wrap(~Type, scales="free_x") + scale_fill_manual(values = c("orchid3", "tomato3", "rosybrown1", "gold", "grey", "mediumturquoise", "lightcoral")) +
   theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15))
@@ -288,6 +289,7 @@ taxafigureStore<- ggarrange(plot0store, plot1Store, plot2Store, plot3Store, plot
 taxafigureStore1<- annotate_figure(taxafigureStore, top= text_grob("Most Abundant Taxonomical Ranks", size = 25))
 taxafigureStore1
 ```
+
 #Writing csv files with abundance numbers of the top 5 taxa
 These files were created to help calculate percent abundance of each of the taxa in each sample type.
 ```{r setup, eval=FALSE}
@@ -322,8 +324,89 @@ phyloseqTop5GenusStore<- phyloseqTop5GenusStore %>%
 write.csv(phyloseqTop5GenusStore, "phyloseqTop5GenusStore.csv")
 ```
 
+#Expressing the abundance counts as relative abundance
+The same figure as above, which contains the top 5 most abundant taxa at each taxonomical rank, was recreated. However, this time the abundance counts were first transformed to a relative abundance between 0 and 1.
+```{r}
+phyloRareTrans<- transform_sample_counts(phyloseq.rarefiedStorePrimeRemove, function(x) x/sum(x))
+
+swabsTrans<- phyloseq::subset_samples(phyloRareTrans, Type== "Swab")
+tissueTrans<- phyloseq::subset_samples(phyloRareTrans, Type== "Tissue")
+storeTrans<- phyloseq::subset_samples(phyloRareTrans, Type== "Store Tissue")
+
+tax.glom.phylum.trans.swabs<- tax_glom(swabsTrans, taxrank="Phylum")
+tax.glom.phylum.trans.tissue<- tax_glom(tissueTrans, taxrank="Phylum")
+tax.glom.phylum.trans.store<- tax_glom(storeTrans, taxrank="Phylum")
+
+tax.glom.class.trans.swabs<- tax_glom(swabsTrans, taxrank="Class")
+tax.glom.class.trans.tissue<- tax_glom(tissueTrans, taxrank="Class")
+tax.glom.class.trans.store<- tax_glom(storeTrans, taxrank="Class")
+
+tax.glom.order.trans.swabs<- tax_glom(swabsTrans, taxrank="Order")
+tax.glom.order.trans.tissue<- tax_glom(tissueTrans, taxrank="Order")
+tax.glom.order.trans.store<- tax_glom(storeTrans, taxrank="Order")
+
+tax.glom.family.trans.swabs<- tax_glom(swabsTrans, taxrank="Family")
+tax.glom.family.trans.tissue<- tax_glom(tissueTrans, taxrank="Family")
+tax.glom.family.trans.store<- tax_glom(storeTrans, taxrank="Family")
+
+tax.glom.genus.trans.swabs<- tax_glom(swabsTrans, taxrank="Genus")
+tax.glom.genus.trans.tissue<- tax_glom(tissueTrans, taxrank="Genus")
+tax.glom.genus.trans.store<- tax_glom(storeTrans, taxrank="Genus")
+
+tax.glom.species.trans.swabs<- tax_glom(swabsTrans, taxrank="Species")
+tax.glom.species.trans.tissue<- tax_glom(tissueTrans, taxrank="Species")
+tax.glom.species.trans.store<- tax_glom(storeTrans, taxrank="Species")
+
+top5phylumTransSwabs<- get_top_taxa(tax.glom.phylum.trans.swabs, n=5, relative=TRUE)
+top5phylumTransTissue<- get_top_taxa(tax.glom.phylum.trans.tissue, n=5, relative=TRUE)
+top5phylumTransStore<- get_top_taxa(tax.glom.phylum.trans.store, n=5, relative=TRUE)
+top5phylumTrans<- merge_phyloseq(top5phylumTransSwabs, top5phylumTransTissue, top5phylumTransStore)
+
+top5classTransSwabs<- get_top_taxa(tax.glom.class.trans.swabs, n=5, relative=TRUE)
+top5classTransTissue<- get_top_taxa(tax.glom.class.trans.tissue, n=5, relative=TRUE)
+top5classTransStore<- get_top_taxa(tax.glom.class.trans.store, n=5, relative=TRUE)
+top5classTrans<- merge_phyloseq(top5classTransSwabs, top5classTransTissue, top5classTransStore)
+
+top5orderTransSwabs<- get_top_taxa(tax.glom.order.trans.swabs, n=5, relative=TRUE)
+top5orderTransTissue<- get_top_taxa(tax.glom.order.trans.tissue, n=5, relative=TRUE)
+top5orderTransStore<- get_top_taxa(tax.glom.order.trans.store, n=5, relative=TRUE)
+top5orderTrans<- merge_phyloseq(top5orderTransSwabs, top5orderTransTissue, top5orderTransStore)
+
+top5familyTransSwabs<- get_top_taxa(tax.glom.family.trans.swabs, n=5, relative=TRUE)
+top5familyTransTissue<- get_top_taxa(tax.glom.family.trans.tissue, n=5, relative=TRUE)
+top5familyTransStore<- get_top_taxa(tax.glom.family.trans.store, n=5, relative=TRUE)
+top5familyTrans<- merge_phyloseq(top5familyTransSwabs, top5familyTransTissue, top5familyTransStore)
+
+top5genusTransSwabs<- get_top_taxa(tax.glom.genus.trans.swabs, n=5, relative=TRUE)
+top5genusTransTissue<- get_top_taxa(tax.glom.genus.trans.tissue, n=5, relative=TRUE)
+top5genusTransStore<- get_top_taxa(tax.glom.genus.trans.store, n=5, relative=TRUE)
+top5genusTrans<- merge_phyloseq(top5genusTransSwabs, top5genusTransTissue, top5genusTransStore)
+
+plot0Trans<- plot_bar(top5phylumTrans, x="Sample.Name", fill="Phylum", title="Most Abundant Phylas") + facet_wrap(~Type, scales="free_x") + scale_fill_manual(values = c("orchid3", "tomato3", "rosybrown1", "gold", "grey", "mediumturquoise", "lightcoral")) +
+  theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15)) + ylab("Relative Abundance")
+
+plot1Trans<- plot_bar(top5classTrans, x="Sample.Name", fill="Class", title="Most Abundant Classes") + facet_wrap(~Type, scales="free_x")  + scale_fill_manual(values = c("orchid3", "mediumseagreen", "gold", "tomato3", "rosybrown1", "royalblue1", "grey", "lightcoral")) +
+  theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15))+ ylab("Relative Abundance")
+
+plot2Trans<- plot_bar(top5orderTrans, x="Sample.Name", fill="Order", title="Most Abundant Orders") + facet_wrap(~Type, scales="free_x")  + scale_fill_manual(values = c("orange2", "olivedrab3", "rosybrown1", "lightskyblue", "gold", "tomato3", "orchid3", "grey", "royalblue1", "mediumseagreen")) +
+  theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15))+ ylab("Relative Abundance")
+
+plot3Trans<- plot_bar(top5familyTrans, x="Sample.Name", fill="Family", title = "Most Abundant Families") + facet_wrap(~Type, scales="free_x")  + scale_fill_manual(values = c("orange2", "lightskyblue", "olivedrab3", "dodgerblue", "gold", "tomato3", "orchid3", "rosybrown1", "grey", "darkorange", "royalblue1", "mediumseagreen", "red4")) +
+  theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15))+ ylab("Relative Abundance")
+
+plot4Trans<- plot_bar(top5genusTrans, x="Sample.Name", fill="Genus", title = "Most Abundant Genera") + facet_wrap(~Type, scales="free_x") + scale_fill_manual(values = c("mediumseagreen", "olivedrab3", "darkorange", "gold", "tomato3", "orange2", "grey", "dodgerblue", "red4", "olivedrab", "royalblue1", "blue")) +
+  theme(axis.text.x = element_text(size = 12), axis.text.y = element_text(size=12), axis.title = element_text(size=15), title=element_text(size=18), legend.text = element_text(size=15), strip.text=element_text(size=15))+ ylab("Relative Abundance")
+
+taxafigureTrans<- ggarrange(plot0Trans, plot1Trans, plot2Trans, plot3Trans, plot4Trans,
+                            labels=c("a.","b.","c.","d.", "e."),
+                            ncol=1, nrow=5, align= "hv", font.label = list(size=18)) 
+taxafigureTrans1<- annotate_figure(taxafigureTrans, top= text_grob("Most Abundant Taxonomical Ranks", size = 25))
+taxafigureTrans1
+```
+
+
 ##Looking at rarer taxa
-In previous code chunks, rarefied data was used. However, some of the more rare taxa were of interest, such as the Enterobacteriaceae family. Since these taxa were expected to be rare, the non-rarefied read data was used. 
+In previous code chunks, rarefied data was used. However, some of the more rare taxa were of interest in this study, such as the Enterobacteriaceae family. Since these taxa were expected to be rare, the non-rarefied read data was used. 
 
 #Add genus name to the species name in the phyloseq object
 ```{r setup, eval=FALSE}
@@ -332,6 +415,7 @@ tax_table(phyloseqStorePrimeRemove)[no.na][,"Species"] = paste(tax_table(phylose
 ```
 
 #Investigating the Enterobacteriaceae Family
+The following code creates a plot with the abundance counts, but these counts can be transformed to create a plot with the percent abundances.
 Subset and agglomerate genera of the same type.
 ```{r setup, eval=FALSE}
 enterobact_store_remove<- subset_taxa(phyloseqStorePrimeRemove, Family == "Enterobacteriaceae")
@@ -357,7 +441,7 @@ lacticAcidGenera<- subset_taxa(phyloseqStorePrimeRemove, Genus=="Aerococcus" | G
 ```
 
 #Look at the species of Pseudomonas present
-The Pseudomonas genus was the most abundant genus in this study and if often found to be the most abundant genus in several studies of leafy green microbial communities. The species of Pseudomonas were investigated to see if known spoilage or plant pathogen species were present.
+The Pseudomonas genus was the most abundant genus in this study and if often found to be the most abundant genus in several studies of leafy green microbial communities. The species of Pseudomonas were investigated to see if known spoilage or plant pathogen species within this genus were present.
 ```{r setup, eval=FALSE}
 pseudo<- subset_taxa(phyloseqStorePrimeRemove, Genus == "Pseudomonas")
 pseudo<- tax_glom(pseudo, taxrank = "Species")
@@ -372,6 +456,7 @@ write.csv(psuedo_melt, "PseudoGenus.csv")
 pseudoplot<- plot_bar(pseudo, x= "Sample.Name", fill="Species", title = "Species in the Pseudomonas Genus") + facet_wrap(~Type, scales = "free_x")
 pseudoplot
 ```
+
 #Agglomerate taxa with the same classification for each taxonomic rank
 Agglomeration of taxa names were done to compare how many phyla, classes, etc were shared and unique among sample types.
 ```{r setup, eval=FALSE}
@@ -396,6 +481,7 @@ ps_euler(taxGlomClass, group = "Type", relative = TRUE, plot = TRUE, quantities=
 ```{r}
 ps_pheatmap(phyloseq.rarefiedStorePrimeRemove, annot_samp = "Type", tax_agg = "Class", relative = TRUE, label_rank = "Class", drop_levels= T)
 ```
+
 #Run an ANOVA-like differential expression (ALDEx) analysis
 In this example, family taxa rank was used since the family level showed more variation among sample types compared to at higher taxa ranks.
 ```{r}
